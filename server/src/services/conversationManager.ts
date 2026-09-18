@@ -109,6 +109,7 @@ Untangle overthinking, listen attentively, and keep the tone warm, grounded, and
 export interface PreparedContext {
   systemPrompt: string;
   relevantMemories: MemoryItem[];
+  allMemories: MemoryItem[];
   intent: ConversationIntent;
   tone: EmotionalTone;
   activeOpenLoops: OpenLoopItem[];
@@ -252,6 +253,7 @@ You must respond with valid JSON adhering to this schema:
   return {
     systemPrompt,
     relevantMemories,
+    allMemories,
     intent,
     tone,
     activeOpenLoops: activeLoops,

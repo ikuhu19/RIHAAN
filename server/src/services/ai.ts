@@ -344,6 +344,111 @@ export function generateIntelligentFallbackOutput(
     };
   }
 
+  // 2.5 Direct Memory Recall & Self-Knowledge Queries
+  // Anti-hallucination guarantee: if user asks what they told Rihaan about X and no record exists, say so honestly!
+  if (/\b(what am i learning|what am i studying|what topic am i|what's my active topic)\b/i.test(lower)) {
+    const topic = request.learningState?.activeTopic || 'Python';
+    const concept = request.learningState?.activeConcept || 'fundamentals';
+    const reply = `You're currently focusing on ${topic}, diving into ${concept}. Ready to write some code or explore an analogy?`;
+    return {
+      reply,
+      speechText: reply,
+      emotion: 'curious',
+      action: 'none',
+      intent: 'teaching'
+    };
+  }
+
+  if (/\b(what project am i building|what am i building|what's my project|tell me about my project)\b/i.test(lower)) {
+    const projMem = (context.allMemories || []).find((m) => m.active && (m.category === 'project' || m.content.toLowerCase().includes('building') || m.tags.includes('project')));
+    if (projMem) {
+      const reply = `You're working on: ${projMem.content}.`;
+      return {
+        reply,
+        speechText: reply,
+        emotion: 'happy',
+        action: 'none',
+        intent: 'project_discussion'
+      };
+    } else {
+      const reply = `You haven't told me about a specific project you're building yet, ${userName}. What are you working on?`;
+      return {
+        reply,
+        speechText: reply,
+        emotion: 'curious',
+        action: 'none',
+        intent: 'casual_chat'
+      };
+    }
+  }
+
+  if (/\b(what is my goal|what are my goals|my goals?)\b/i.test(lower)) {
+    const goalMem = (context.allMemories || []).filter((m) => m.active && (m.category === 'goal' || m.tags.includes('goal')));
+    if (goalMem.length > 0) {
+      const reply = `Your main goals on record: ${goalMem.map((g) => g.content).join('; ')}.`;
+      return {
+        reply,
+        speechText: reply,
+        emotion: 'serious',
+        action: 'none',
+        intent: 'reflection'
+      };
+    }
+  }
+
+  if (/\b(what do you remember about me|what do you know about me|do you remember me)\b/i.test(lower)) {
+    const activeMems = (context.allMemories || []).filter((m) => m.active);
+    if (activeMems.length > 0) {
+      const highlights = activeMems.slice(0, 3).map((m) => m.content).join(' • ');
+      const reply = `Here is what I keep in mind about you, ${userName}:\n${highlights}\nWhat else should we add?`;
+      const speechText = `Here's what I know: you're ${userName}, building your project and learning steadily. What's on your mind today?`;
+      return {
+        reply,
+        speechText,
+        emotion: 'happy',
+        action: 'none',
+        intent: 'casual_chat'
+      };
+    }
+  }
+
+  const recallMatch = lower.match(/(?:what did i tell you about|do you remember (?:what i said about|my)?|what is my|what's my|tell me about my|do you know my)\s+([^?.!]+)/i);
+  if (recallMatch && recallMatch[1]?.trim()) {
+    const subject = recallMatch[1].trim();
+    const subWords = subject.split(/\s+/).filter((w) => !['the', 'a', 'an', 'my', 'about', 'is', 'did'].includes(w));
+    
+    const matchingMem = (context.allMemories || []).find((m) => {
+      if (!m.active) return false;
+      const memText = (m.content + ' ' + m.tags.join(' ')).toLowerCase();
+      return subWords.length > 0 && subWords.every((w) => memText.includes(w));
+    }) || (context.allMemories || []).find((m) => {
+      if (!m.active) return false;
+      const memText = (m.content + ' ' + m.tags.join(' ')).toLowerCase();
+      return subWords.some((w) => memText.includes(w));
+    });
+
+    if (matchingMem) {
+      const reply = `You told me that ${matchingMem.content}.`;
+      return {
+        reply,
+        speechText: reply,
+        emotion: 'happy',
+        action: 'none',
+        intent: 'casual_chat'
+      };
+    } else {
+      // STRICT ANTI-HALLUCINATION
+      const reply = `I don't recall you mentioning your ${subject} yet, ${userName}. Tell me about it!`;
+      return {
+        reply,
+        speechText: reply,
+        emotion: 'curious',
+        action: 'none',
+        intent: 'casual_chat'
+      };
+    }
+  }
+
   // 3. Greetings & Casual Pleasantries
   if (/^(?:hi|hello|hey|yo|sup|good\s+(?:morning|afternoon|evening)|namaste|salaam)\b/i.test(lower)) {
     const greetings = [

@@ -1,0 +1,93 @@
+[
+  {
+    "id": "mem_seed_profile_1",
+    "content": "Name: Kuhu",
+    "category": "identity",
+    "importance": 5,
+    "createdAt": 1789131565413,
+    "updatedAt": 1789131565413,
+    "source": "explicit",
+    "confidence": 1,
+    "tags": [
+      "name",
+      "kuhu",
+      "identity"
+    ],
+    "active": true
+  },
+  {
+    "id": "mem_seed_profile_2",
+    "content": "Prefers honest, straightforward advice and warm natural conversation",
+    "category": "preference",
+    "importance": 4,
+    "createdAt": 1789131565413,
+    "updatedAt": 1789131565413,
+    "source": "inferred",
+    "confidence": 0.9,
+    "tags": [
+      "communication",
+      "style",
+      "honest",
+      "advice"
+    ],
+    "active": true
+  },
+  {
+    "id": "mem_seed_companion",
+    "content": "Rihaan is her close AI best friend & alter ego physically lounging in their virtual room",
+    "category": "relationship",
+    "importance": 5,
+    "createdAt": 1789131565413,
+    "updatedAt": 1789131565413,
+    "source": "explicit",
+    "confidence": 1,
+    "tags": [
+      "rihaan",
+      "best_friend",
+      "alter_ego",
+      "room"
+    ],
+    "active": true
+  },
+  {
+    "id": "mem_seed_project",
+    "content": "Building RIHAAN: an interactive 3D companion and tutor web application with voice and memory",
+    "category": "project",
+    "importance": 5,
+    "createdAt": 1789304365413,
+    "updatedAt": 1789304365413,
+    "source": "explicit",
+    "confidence": 1,
+    "tags": [
+      "rihaan",
+      "project",
+      "ai",
+      "companion",
+      "voice",
+      "3d",
+      "threejs",
+      "react"
+    ],
+    "active": true
+  },
+  {
+    "id": "mem_seed_goal",
+    "content": "Mastering Python and data structures with consistent hands-on coding",
+    "category": "goal",
+    "importance": 4,
+    "createdAt": 1789477165413,
+    "updatedAt": 1789477165413,
+    "source": "explicit",
+    "confidence": 0.95,
+    "tags": [
+      "python",
+      "dsa",
+      "data_structures",
+      "programming",
+      "code",
+      "study",
+      "learning"
+    ],
+    "active": true
+  }
+]

@@ -197,4 +197,5 @@ export interface ChatResponse {
   updatedLearningState?: LearningState;
   updatedOpenLoops?: OpenLoopItem[];
   followUp?: string | null;
+  authoritativeMemories?: MemoryItem[];
 }

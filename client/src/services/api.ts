@@ -22,6 +22,82 @@ export interface ChatApiResponse {
   updatedLearningState?: LearningState;
   updatedOpenLoops?: OpenLoopItem[];
   followUp?: string | null;
+  authoritativeMemories?: MemoryItem[];
+}
+
+export async function fetchMemoriesApi(): Promise<{
+  memories: MemoryItem[];
+  learningState: LearningState;
+  openLoops: OpenLoopItem[];
+} | null> {
+  try {
+    const res = await fetch('/api/memory');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[Memory API] Could not fetch server memories, using local storage cache:', err);
+  }
+  return null;
+}
+
+export async function addMemoryApi(
+  content: string,
+  category: string = 'identity',
+  importance: number = 3
+): Promise<MemoryItem | null> {
+  try {
+    const res = await fetch('/api/memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, category, importance })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.memory;
+    }
+  } catch (err) {
+    console.warn('[Memory API] Error posting memory to server:', err);
+  }
+  return null;
+}
+
+export async function updateMemoryApi(id: string, updates: Partial<MemoryItem>): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/memory/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[Memory API] Error updating memory on server:', err);
+    return false;
+  }
+}
+
+export async function deleteMemoryApi(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/memory/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[Memory API] Error deleting memory from server:', err);
+    return false;
+  }
+}
+
+export async function clearMemoriesApi(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/memory/clear', {
+      method: 'POST'
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[Memory API] Error clearing memories on server:', err);
+    return false;
+  }
 }
 
 export async function sendChatMessage(

@@ -173,6 +173,7 @@ export function processStructuredResponse(
     removedMemoryIds: removedIds,
     updatedLearningState,
     updatedOpenLoops,
-    followUp: rawOutput.followUp || null
+    followUp: rawOutput.followUp || null,
+    authoritativeMemories: currentMemories
   };
 }

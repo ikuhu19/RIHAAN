@@ -24,6 +24,7 @@ import {
   saveMemoryEnabled,
   addMemoryItem,
   removeMemoryItem,
+  addRichMemoryItem,
   deleteRichMemoryItem,
   clearAllMemories,
   mergeExtractedMemories
@@ -35,7 +36,13 @@ import {
   setActiveSessionId,
   createNewSession
 } from './services/storage';
-import { sendChatMessage } from './services/api';
+import {
+  sendChatMessage,
+  fetchMemoriesApi,
+  addMemoryApi,
+  deleteMemoryApi,
+  clearMemoriesApi
+} from './services/api';
 import { speechRecognizer } from './voice/speechRecognition';
 import { ttsService } from './voice/ttsService';
 import { generateVihaanGreeting } from './voice/greetings';
@@ -113,6 +120,25 @@ export const App: React.FC = () => {
   // Sync initial mute state
   useEffect(() => {
     setIsMuted(ttsService.isMuted());
+  }, []);
+
+  // Hydrate authoritative memories, learning state, and open loops from server on mount
+  useEffect(() => {
+    fetchMemoriesApi().then((data) => {
+      if (data && data.memories && data.memories.length > 0) {
+        console.log(`[Memory Sync] Hydrated ${data.memories.length} authoritative memories from server.`);
+        setRichMemories(data.memories);
+        saveRichMemories(data.memories);
+        if (data.learningState) {
+          setLearningState(data.learningState);
+          saveLearningState(data.learningState);
+        }
+        if (data.openLoops) {
+          setOpenLoops(data.openLoops);
+          saveOpenLoops(data.openLoops);
+        }
+      }
+    });
   }, []);
 
   // Persist user name
@@ -351,12 +377,24 @@ export const App: React.FC = () => {
 
       // 4. Update rich memories and legacy store if enabled
       if (memoryEnabled) {
-        if (res.newMemories && res.newMemories.length > 0) {
-          setRichMemories((prev) => {
-            const merged = [...res.newMemories!, ...prev];
-            saveRichMemories(merged);
-            return merged;
-          });
+        if (res.authoritativeMemories && res.authoritativeMemories.length > 0) {
+          setRichMemories(res.authoritativeMemories);
+          saveRichMemories(res.authoritativeMemories);
+        } else {
+          if (res.newMemories && res.newMemories.length > 0) {
+            setRichMemories((prev) => {
+              const merged = [...res.newMemories!, ...prev];
+              saveRichMemories(merged);
+              return merged;
+            });
+          }
+          if (res.removedMemoryIds && res.removedMemoryIds.length > 0) {
+            setRichMemories((prev) => {
+              const filtered = prev.filter((m) => !res.removedMemoryIds!.includes(m.id));
+              saveRichMemories(filtered);
+              return filtered;
+            });
+          }
         }
         if (res.extractedMemories) {
           setMemories((prev) => mergeExtractedMemories(prev, res.extractedMemories));
@@ -455,17 +493,29 @@ export const App: React.FC = () => {
   };
 
   // Memory Handlers
-  const handleAddMemory = (category: keyof MemoryStore, item: string) => {
+  const handleAddMemory = async (category: keyof MemoryStore, item: string) => {
     setMemories((prev) => addMemoryItem(prev, category, item));
+    const newRich = addRichMemoryItem(richMemories, item, category as any, 4);
+    setRichMemories(newRich);
+    await addMemoryApi(item, category as any, 4);
   };
 
-  const handleDeleteMemory = (category: keyof MemoryStore, index: number) => {
+  const handleDeleteMemory = async (category: keyof MemoryStore, index: number) => {
+    const itemText = memories[category]?.[index];
     setMemories((prev) => removeMemoryItem(prev, category, index));
+    if (itemText) {
+      const matching = richMemories.find((m) => m.content.toLowerCase() === itemText.toLowerCase());
+      if (matching) {
+        setRichMemories((prev) => deleteRichMemoryItem(prev, matching.id));
+        await deleteMemoryApi(matching.id);
+      }
+    }
   };
 
-  const handleClearAllMemories = () => {
+  const handleClearAllMemories = async () => {
     setMemories(clearAllMemories());
     setRichMemories([]);
+    await clearMemoriesApi();
   };
 
   // Session Handlers
@@ -576,8 +626,9 @@ export const App: React.FC = () => {
         }}
         onAddMemory={handleAddMemory}
         onDeleteMemory={handleDeleteMemory}
-        onDeleteRichMemory={(id) => {
+        onDeleteRichMemory={async (id) => {
           setRichMemories((prev) => deleteRichMemoryItem(prev, id));
+          await deleteMemoryApi(id);
         }}
         onClearAll={handleClearAllMemories}
         onUpdateLearningMastery={(topic, concept, status) => {
