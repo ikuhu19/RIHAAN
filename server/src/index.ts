@@ -17,7 +17,7 @@ app.use(express.json());
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    companion: 'VIHAAN',
+    companion: 'RIHAAN',
     provider: process.env.AI_PROVIDER || 'mock',
     hasKey: !!process.env.AI_API_KEY
   });
@@ -32,15 +32,16 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // 1. Generate Vihaan response
+    // 1. Generate Rihaan response via intelligent multi-layered pipeline
     const response = await generateVihaanReply(chatReq);
 
-    // 2. Extract any newly declared memories from user message only if memory is enabled
+    // 2. Complement with regex pattern extraction if memory is active
     if (chatReq.memoryEnabled !== false) {
-      const extracted = extractMemoriesFromText(chatReq.message);
-      response.extractedMemories = extracted;
-    } else {
-      response.extractedMemories = {};
+      const regexExtracted = extractMemoriesFromText(chatReq.message);
+      response.extractedMemories = {
+        ...(response.extractedMemories || {}),
+        ...regexExtracted
+      };
     }
 
     return res.json(response);
@@ -64,6 +65,6 @@ app.post('/api/memory/extract', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✨ Vihaan backend server listening on http://localhost:${PORT}`);
-  console.log(`🤖 AI Provider: ${process.env.AI_PROVIDER || 'smart mock'}`);
+  console.log(`✨ Rihaan companion server listening on http://localhost:${PORT}`);
+  console.log(`🤖 AI Provider: ${process.env.AI_PROVIDER || 'intelligent companion brain (offline)'}`);
 });

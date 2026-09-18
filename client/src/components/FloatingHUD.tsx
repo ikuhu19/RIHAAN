@@ -7,9 +7,10 @@ import {
   MessageSquare,
   Sparkles,
   Settings,
-  RotateCcw
+  RotateCcw,
+  BookOpen
 } from 'lucide-react';
-import { PersonalityMode, AvatarEmotion, VoiceState } from '../types';
+import { PersonalityMode, AvatarEmotion, VoiceState, ConversationIntent } from '../types';
 
 interface FloatingHUDProps {
   currentMode: PersonalityMode;
@@ -31,6 +32,9 @@ interface FloatingHUDProps {
   lastReplyText: string;
   interimTranscript: string;
   onReplayLastReply: () => void;
+  activeTopic?: string;
+  activeConcept?: string;
+  currentIntent?: ConversationIntent;
 }
 
 export const FloatingHUD: React.FC<FloatingHUDProps> = ({
@@ -51,13 +55,16 @@ export const FloatingHUD: React.FC<FloatingHUDProps> = ({
   onOpenSettings,
   lastReplyText,
   interimTranscript,
-  onReplayLastReply
+  onReplayLastReply,
+  activeTopic,
+  activeConcept,
+  currentIntent
 }) => {
   const modeLabels: Record<PersonalityMode, { label: string; icon: string }> = {
     best_friend: { label: 'Best Friend', icon: '🫂' },
     alter_ego: { label: 'Alter Ego', icon: '🪞' },
     roast: { label: 'Roast Mode', icon: '🔥' },
-    study: { label: 'Study Mode', icon: '📚' },
+    study: { label: 'Study & Tutor', icon: '📚' },
     night_2am: { label: '2 AM Heart-to-Heart', icon: '🌙' }
   };
 
@@ -69,7 +76,7 @@ export const FloatingHUD: React.FC<FloatingHUDProps> = ({
         return { text: 'THINKING', icon: '🧠', className: 'status-pill-thinking' };
       case 'SPEAKING':
       case 'GREETING':
-        return { text: 'VIHAAN SPEAKING', icon: '🗣️', className: 'status-pill-speaking' };
+        return { text: 'RIHAAN SPEAKING', icon: '🗣️', className: 'status-pill-speaking' };
       case 'MIC_ERROR':
         return { text: errorMessage ? `MIC ERROR: ${errorMessage.substring(0, 32)}...` : 'MICROPHONE ERROR', icon: '🔴', className: 'status-pill-error' };
       case 'INITIALIZING':
@@ -86,11 +93,11 @@ export const FloatingHUD: React.FC<FloatingHUDProps> = ({
     <div className="floating-hud-overlay">
       {/* 1. Sleek Floating Top Bar */}
       <header className="hud-top-bar">
-        {/* Left: Vihaan Identity & Mode Switcher */}
+        {/* Left: Rihaan Identity & Mode Switcher */}
         <div className="hud-left-group">
           <div className="hud-brand-pill">
             <span className="hud-brand-dot" />
-            <span className="hud-brand-title">VIHAAN</span>
+            <span className="hud-brand-title">RIHAAN</span>
             <span className="hud-room-indicator">In Room</span>
           </div>
 
@@ -99,7 +106,7 @@ export const FloatingHUD: React.FC<FloatingHUDProps> = ({
               value={currentMode}
               onChange={(e) => onModeChange(e.target.value as PersonalityMode)}
               className="hud-mode-dropdown"
-              title="Change Vihaan's personality mode"
+              title="Change Rihaan's personality mode"
             >
               {(Object.keys(modeLabels) as PersonalityMode[]).map((m) => (
                 <option key={m} value={m}>
@@ -108,6 +115,14 @@ export const FloatingHUD: React.FC<FloatingHUDProps> = ({
               ))}
             </select>
           </div>
+
+          {/* Active Learning / Tutor Topic Pill */}
+          {activeTopic && (
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full text-xs text-amber-300">
+              <BookOpen size={12} className="text-amber-400" />
+              <span>{activeTopic}{activeConcept ? ` · ${activeConcept}` : ''}</span>
+            </div>
+          )}
         </div>
 
         {/* Center: Live Voice State Indicator & End Session button */}
@@ -175,7 +190,7 @@ export const FloatingHUD: React.FC<FloatingHUDProps> = ({
           <button
             className="hud-icon-btn"
             onClick={onOpenSettings}
-            title="Preferences & Settings"
+            title="Settings & Audio Preferences"
             id="hud-settings-btn"
           >
             <Settings size={18} />
@@ -183,93 +198,65 @@ export const FloatingHUD: React.FC<FloatingHUDProps> = ({
         </div>
       </header>
 
-      {/* Active Microphone Error Banner */}
-      {voiceState === 'MIC_ERROR' && (
-        <div className="hud-error-banner" onClick={onOpenDiagnostics}>
-          <span>🔴 {errorMessage || 'Microphone error detected.'}</span>
-          <span className="underline ml-2 text-xs font-bold">Click to Diagnose & Fix</span>
-        </div>
-      )}
-
-      {/* 2. Dynamic Subtitle & Dialogue Banner (Non-intrusive) */}
-      <div className="hud-dialogue-wrapper">
+      {/* 2. Bottom Living Voice & Subtitles Tray */}
+      <footer className="hud-bottom-tray">
+        {/* Real-time Interim Live Voice Feedback */}
         {interimTranscript && (
-          <div className="hud-user-transcript">
-            <span className="transcript-prefix">You:</span> "{interimTranscript}"
+          <div className="hud-interim-voice-bubble">
+            <span className="interim-listening-dot" />
+            <span className="interim-text">"{interimTranscript}"</span>
           </div>
         )}
 
+        {/* Spoken Subtitle Banner with Replay Action */}
         {lastReplyText && !interimTranscript && (
-          <div className="hud-subtitles-card">
-            <span className="vihaan-tag">Vihaan:</span>
-            <p className="vihaan-spoken-text">"{lastReplyText}"</p>
-            {isSpeaking && (
-              <button
-                className="hud-replay-btn"
-                onClick={onReplayLastReply}
-                title="Replay speech"
-              >
-                <RotateCcw size={14} />
-              </button>
-            )}
+          <div className="hud-speech-subtitle-banner">
+            <div className="speech-quote-container">
+              <span className="quote-mark">“</span>
+              <p className="speech-quote-text">{lastReplyText}</p>
+              <span className="quote-mark">”</span>
+            </div>
+
+            <button
+              className="hud-replay-speech-btn"
+              onClick={onReplayLastReply}
+              title="Listen to this reply again"
+              disabled={isSpeaking || isThinking}
+            >
+              <RotateCcw size={14} />
+              <span>Replay Voice</span>
+            </button>
           </div>
         )}
-      </div>
 
-      {/* 3. Floating Voice Capsule at Bottom */}
-      <div className="hud-bottom-bar">
-        <div
-          className={`hud-voice-capsule ${
-            isListening
-              ? 'state-listening'
-              : isThinking
-              ? 'state-thinking'
-              : isSpeaking
-              ? 'state-speaking'
-              : 'state-idle'
-          }`}
-          onClick={onToggleMic}
-          id="hud-mic-capsule"
-          title={isListening ? 'Microphone active - Tap to pause' : 'Tap to speak with Vihaan'}
-        >
-          {/* Status Indicator Icon */}
-          <div className="capsule-icon-bubble">
+        {/* Floating Mic Control Center */}
+        <div className="hud-mic-actions-container">
+          <button
+            id="hud-toggle-mic-btn"
+            className={`hud-primary-mic-button ${isListening ? 'mic-listening-pulse' : ''} ${
+              isThinking ? 'mic-thinking-glow' : ''
+            }`}
+            onClick={onToggleMic}
+            title={isListening ? 'Click to stop listening' : 'Click to talk to Rihaan'}
+          >
             {isListening ? (
-              <Mic className="capsule-mic-active" size={20} />
-            ) : isMuted ? (
-              <MicOff size={20} />
+              <MicOff size={28} className="text-rose-400" />
             ) : (
-              <Mic size={20} />
+              <Mic size={28} className="text-teal-300" />
             )}
-          </div>
+          </button>
 
-          {/* Status Text & Soundwave Animation */}
-          <div className="capsule-info">
-            <span className="capsule-status-title">
-              {isListening
-                ? 'Listening to you...'
-                : isThinking
-                ? 'Thinking...'
-                : isSpeaking
-                ? 'Vihaan is speaking...'
-                : 'Continuous Voice Ready'}
-            </span>
-            <span className="capsule-subtext">
-              {isListening
-                ? 'Speak to Vihaan...'
-                : 'Tap to toggle microphone'}
-            </span>
-          </div>
-
-          {/* Mini Soundwave bars */}
-          <div className="capsule-soundwave">
-            <span className="bar b1" />
-            <span className="bar b2" />
-            <span className="bar b3" />
-            <span className="bar b4" />
-          </div>
+          <span className="hud-mic-caption">
+            {isListening
+              ? 'Listening to you... Speak anytime'
+              : isThinking
+              ? 'Rihaan is reasoning...'
+              : isSpeaking
+              ? 'Rihaan is speaking aloud...'
+              : 'Tap Mic to speak to Rihaan'}
+          </span>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };

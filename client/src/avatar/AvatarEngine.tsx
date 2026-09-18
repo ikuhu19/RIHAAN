@@ -6,7 +6,7 @@ interface AvatarEngineProps {
   isListening: boolean;
   isThinking: boolean;
   isSpeaking: boolean;
-  speechTick?: number; // increments on speech boundaries for lip-sync
+  speechTick?: number;
   onAvatarClick?: () => void;
 }
 
@@ -22,16 +22,16 @@ export const AvatarEngine: React.FC<AvatarEngineProps> = ({
   const [mouthOpenAmount, setMouthOpenAmount] = useState(0);
   const blinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Natural random eye blinking logic (blinks every 3-6 seconds)
+  // Natural random eye blinking logic (blinks every 2.5-5.5 seconds)
   useEffect(() => {
     const scheduleNextBlink = () => {
-      const delay = Math.random() * 3000 + 2500; // between 2.5s and 5.5s
+      const delay = Math.random() * 3000 + 2500;
       blinkTimerRef.current = setTimeout(() => {
         setIsBlinking(true);
         setTimeout(() => {
           setIsBlinking(false);
           scheduleNextBlink();
-        }, 160); // 160ms realistic blink duration
+        }, 160);
       }, delay);
     };
 
@@ -41,7 +41,7 @@ export const AvatarEngine: React.FC<AvatarEngineProps> = ({
     };
   }, []);
 
-  // Lip-sync simulation: fluctuate mouth open amount when speaking
+  // Lip-sync simulation: organic mouth variance when speaking
   useEffect(() => {
     if (!isSpeaking) {
       setMouthOpenAmount(0);
@@ -51,7 +51,6 @@ export const AvatarEngine: React.FC<AvatarEngineProps> = ({
     let active = true;
     const interval = setInterval(() => {
       if (!active) return;
-      // Organic mouth variance between 0.15 and 0.85
       const variance = Math.random() * 0.7 + 0.15;
       setMouthOpenAmount(variance);
     }, 110);
@@ -95,7 +94,7 @@ export const AvatarEngine: React.FC<AvatarEngineProps> = ({
         {/* Base Character Portrait */}
         <img
           src="/vihaan_portrait.jpg"
-          alt="Vihaan - AI Companion"
+          alt="Rihaan - AI Companion"
           className="avatar-portrait-image"
           draggable={false}
         />
@@ -105,9 +104,7 @@ export const AvatarEngine: React.FC<AvatarEngineProps> = ({
           className={`avatar-eyelids ${isBlinking ? 'blink-closed' : 'blink-open'}`}
           aria-hidden="true"
         >
-          {/* Left Eye Eyelid */}
           <div className="eyelid eyelid-left" />
-          {/* Right Eye Eyelid */}
           <div className="eyelid eyelid-right" />
         </div>
 
@@ -155,7 +152,7 @@ export const AvatarEngine: React.FC<AvatarEngineProps> = ({
               <span className="bar b2" />
               <span className="bar b3" />
             </span>
-            🗣️ VIHAAN IS SPEAKING
+            🗣️ RIHAAN IS SPEAKING
           </span>
         )}
         {effectiveState === 'idle' && (
@@ -181,6 +178,26 @@ export const AvatarEngine: React.FC<AvatarEngineProps> = ({
         {effectiveState === 'surprised' && (
           <span className="flex items-center gap-1.5 text-purple-300 font-medium">
             😮 SURPRISED
+          </span>
+        )}
+        {effectiveState === 'curious' && (
+          <span className="flex items-center gap-1.5 text-cyan-300 font-medium">
+            🧐 CURIOUS & OBSERVANT
+          </span>
+        )}
+        {effectiveState === 'serious' && (
+          <span className="flex items-center gap-1.5 text-indigo-300 font-medium">
+            🎯 GROUNDED & SERIOUS
+          </span>
+        )}
+        {effectiveState === 'teasing' && (
+          <span className="flex items-center gap-1.5 text-rose-300 font-medium">
+            😏 PLAYFUL TEASING
+          </span>
+        )}
+        {effectiveState === 'concerned' && (
+          <span className="flex items-center gap-1.5 text-amber-200 font-medium">
+            🫂 ATTENTIVE & CARING
           </span>
         )}
       </div>

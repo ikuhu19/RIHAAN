@@ -18,25 +18,25 @@ export const EnterWorldModal: React.FC<EnterWorldModalProps> = ({ onEnter, onOpe
           <div className="enter-world-icon-badge">
             <Sparkles className="w-8 h-8 text-amber-300 animate-pulse" />
           </div>
-          <span className="enter-world-tag">AI COMPANION & ALTER EGO</span>
-          <h1 className="enter-world-title">Enter Vihaan's Room</h1>
+          <span className="enter-world-tag">AI COMPANION · ALTER EGO · TUTOR</span>
+          <h1 className="enter-world-title">Enter Rihaan's Room</h1>
           <p className="enter-world-subtitle">
-            Vihaan is right here waiting for you, {userName}.
+            Rihaan is right here waiting for you, {userName}.
           </p>
         </div>
 
         <div className="enter-world-features">
           <div className="feature-chip">
             <Mic className="feature-icon" size={16} />
-            <span>Continuous Voice: Speak in Hindi, English or Hinglish</span>
+            <span>Continuous Voice: Speak naturally in English or Hinglish</span>
           </div>
           <div className="feature-chip">
             <Volume2 className="feature-icon" size={16} />
-            <span>Speaks aloud with warm conversational cadence</span>
+            <span>Speaks aloud with warm conversational cadence & intelligence</span>
           </div>
           <div className="feature-chip">
             <Heart className="feature-icon" size={16} />
-            <span>Living presence, memory & banter</span>
+            <span>Persistent multi-tier memory, adaptive learning & alter-ego presence</span>
           </div>
         </div>
 
@@ -47,7 +47,7 @@ export const EnterWorldModal: React.FC<EnterWorldModalProps> = ({ onEnter, onOpe
             onClick={onEnter}
             autoFocus
           >
-            <span>Enter Vihaan's World</span>
+            <span>Enter Rihaan's World</span>
             <Sparkles size={18} />
           </button>
 

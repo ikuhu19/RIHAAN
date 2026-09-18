@@ -4,15 +4,27 @@ import {
   AvatarEmotion,
   ChatMessage,
   MemoryStore,
+  MemoryItem,
+  LearningState,
+  OpenLoopItem,
+  MasteryLevel,
   ConversationSession,
   VoiceState
 } from './types';
 import {
   loadMemories,
+  loadRichMemories,
+  saveRichMemories,
+  loadLearningState,
+  saveLearningState,
+  updateConceptMastery,
+  loadOpenLoops,
+  saveOpenLoops,
   loadMemoryEnabled,
   saveMemoryEnabled,
   addMemoryItem,
   removeMemoryItem,
+  deleteRichMemoryItem,
   clearAllMemories,
   mergeExtractedMemories
 } from './memory/memoryStore';
@@ -44,6 +56,9 @@ export const App: React.FC = () => {
     getActiveSessionId(loadSessions())
   );
   const [memories, setMemories] = useState<MemoryStore>(() => loadMemories());
+  const [richMemories, setRichMemories] = useState<MemoryItem[]>(() => loadRichMemories());
+  const [learningState, setLearningState] = useState<LearningState>(() => loadLearningState());
+  const [openLoops, setOpenLoops] = useState<OpenLoopItem[]>(() => loadOpenLoops());
   const [memoryEnabled, setMemoryEnabled] = useState<boolean>(() => loadMemoryEnabled());
   const [userName, setUserName] = useState<string>(() => {
     return localStorage.getItem('vihaan_user_name') || 'Kuhu';
@@ -84,7 +99,7 @@ export const App: React.FC = () => {
   // Subtitle / Spoken text
   const [lastReply, setLastReply] = useState<string>(() => {
     const msgs = currentSession.messages;
-    const lastVihaan = [...msgs].reverse().find((m) => m.sender === 'vihaan');
+    const lastVihaan = [...msgs].reverse().find((m) => m.sender === 'vihaan' || (m.sender as any) === 'rihaan');
     return lastVihaan ? lastVihaan.text : "Arre Kuhu, I'm right here in my room.";
   });
 
@@ -163,7 +178,6 @@ export const App: React.FC = () => {
 
     speechRecognizer.startListening({
       onStart: () => {
-        // Truthful UI synchronization: ONLY transition to LISTENING once recognition has truly started!
         setVoiceState('LISTENING');
         setCurrentEmotion('listening');
         setVoiceErrorMessage('');
@@ -205,10 +219,8 @@ export const App: React.FC = () => {
         setCurrentEmotion('idle');
         resetProactiveTimer();
 
-        // Critical State Machine Transition: SPEAKING -> LISTENING
         if (hasEnteredWorldRef.current && continuousVoice && !isMuted) {
           console.log('[VOICE] restarting recognition');
-          // Wait 600ms (500–1000ms) to ensure audio output has cleared from mic
           setTimeout(() => {
             if (hasEnteredWorldRef.current && !isMuted) {
               startListeningTurn();
@@ -237,7 +249,7 @@ export const App: React.FC = () => {
     });
   };
 
-  // Handle user entering Vihaan's room
+  // Handle user entering Rihaan's room
   const handleEnterWorld = async () => {
     console.log('[VOICE DEBUG] session started');
     setHasEnteredWorld(true);
@@ -270,7 +282,7 @@ export const App: React.FC = () => {
       }));
     }
 
-    // 3. Vihaan greets Kuhu aloud; onEnd automatically triggers startListeningTurn() if mic initialized
+    // 3. Rihaan greets aloud
     setVoiceState('GREETING');
     setTimeout(() => {
       playSpeech(greeting.text, greeting.emotion);
@@ -297,7 +309,7 @@ export const App: React.FC = () => {
 
     resetProactiveTimer();
 
-    // 1. Transition: LISTENING -> THINKING (recognition stopped)
+    // 1. Transition: LISTENING -> THINKING
     setVoiceState('THINKING');
     setCurrentEmotion('thinking');
 
@@ -319,45 +331,77 @@ export const App: React.FC = () => {
     }));
 
     try {
-      console.log('[AI] sending user message:', userText);
-      // 3. Request reply from backend AI engine
+      console.log('[AI] sending user message to Rihaan brain:', userText);
       const history = [...currentSession.messages, userMsg];
-      const res = await sendChatMessage(userText, history, currentMode, memories, memoryEnabled);
+
+      // 3. Request reply with rich context (memories, learning state, open loops)
+      const res = await sendChatMessage(
+        userText,
+        history,
+        currentMode,
+        memories,
+        memoryEnabled,
+        richMemories,
+        learningState,
+        openLoops,
+        userName
+      );
 
       console.log('[AI] response received:', res.reply);
 
-      // 4. Update memories if facts or life events extracted and memory is enabled
-      if (memoryEnabled && res.extractedMemories) {
-        setMemories((prev) => mergeExtractedMemories(prev, res.extractedMemories));
+      // 4. Update rich memories and legacy store if enabled
+      if (memoryEnabled) {
+        if (res.newMemories && res.newMemories.length > 0) {
+          setRichMemories((prev) => {
+            const merged = [...res.newMemories!, ...prev];
+            saveRichMemories(merged);
+            return merged;
+          });
+        }
+        if (res.extractedMemories) {
+          setMemories((prev) => mergeExtractedMemories(prev, res.extractedMemories));
+        }
       }
 
-      // 5. Append Vihaan's message
-      const vihaanMsg: ChatMessage = {
-        id: 'msg_vihaan_' + Date.now(),
+      // 5. Update adaptive learning state if changed
+      if (res.updatedLearningState) {
+        setLearningState(res.updatedLearningState);
+        saveLearningState(res.updatedLearningState);
+      }
+
+      // 6. Update open loops if changed
+      if (res.updatedOpenLoops) {
+        setOpenLoops(res.updatedOpenLoops);
+        saveOpenLoops(res.updatedOpenLoops);
+      }
+
+      // 7. Append Rihaan's message
+      const rihaanMsg: ChatMessage = {
+        id: 'msg_rihaan_' + Date.now(),
         sender: 'vihaan',
         text: res.reply,
         timestamp: Date.now(),
-        emotion: res.emotion
+        emotion: res.emotion,
+        action: res.action
       };
 
       updateActiveSession((prev) => ({
         ...prev,
-        messages: [...prev.messages, vihaanMsg]
+        messages: [...prev.messages, rihaanMsg]
       }));
 
       setLastReply(res.reply);
 
-      // Brief conversational timing
+      // Brief conversational natural pause
       await new Promise((resolve) => setTimeout(resolve, 350));
 
-      // 6. Transition: THINKING -> SPEAKING
+      // 8. Transition: THINKING -> SPEAKING (Using clean speech text for natural non-robotic audio)
       setVoiceState('SPEAKING');
-      playSpeech(res.reply, res.emotion);
+      playSpeech(res.speechText || res.reply, res.emotion);
     } catch (err) {
       console.error('[VOICE] Failed to process message:', err);
       setVoiceState('IDLE');
       setCurrentEmotion('idle');
-      // On error, try to recover listening
       setTimeout(() => {
         if (hasEnteredWorldRef.current) {
           console.log('[VOICE] restarting recognition');
@@ -421,6 +465,7 @@ export const App: React.FC = () => {
 
   const handleClearAllMemories = () => {
     setMemories(clearAllMemories());
+    setRichMemories([]);
   };
 
   // Session Handlers
@@ -460,7 +505,7 @@ export const App: React.FC = () => {
         <div className="cozy-room-grid-overlay" />
       </div>
 
-      {/* 2. Central Living 2D Character: Vihaan */}
+      {/* 2. Central Living Character: Rihaan */}
       <main className="central-character-stage">
         <AvatarEngine
           emotion={currentEmotion}
@@ -493,6 +538,8 @@ export const App: React.FC = () => {
           lastReplyText={lastReply}
           interimTranscript={interimTranscript}
           onReplayLastReply={handleReplayLastSpeech}
+          activeTopic={learningState.activeTopic}
+          activeConcept={learningState.activeConcept}
         />
       )}
 
@@ -515,11 +562,13 @@ export const App: React.FC = () => {
         currentMode={currentMode}
       />
 
-      {/* 6. Memory Modal */}
+      {/* 6. Memory & Adaptive Learning Modal */}
       <MemoryModal
         isOpen={isMemoryOpen}
         onClose={() => setIsMemoryOpen(false)}
         memories={memories}
+        richMemories={richMemories}
+        learningState={learningState}
         memoryEnabled={memoryEnabled}
         onToggleMemoryEnabled={(val) => {
           setMemoryEnabled(val);
@@ -527,7 +576,13 @@ export const App: React.FC = () => {
         }}
         onAddMemory={handleAddMemory}
         onDeleteMemory={handleDeleteMemory}
+        onDeleteRichMemory={(id) => {
+          setRichMemories((prev) => deleteRichMemoryItem(prev, id));
+        }}
         onClearAll={handleClearAllMemories}
+        onUpdateLearningMastery={(topic, concept, status) => {
+          setLearningState((prev) => updateConceptMastery(prev, topic, concept, status));
+        }}
       />
 
       {/* 7. Session History Drawer */}

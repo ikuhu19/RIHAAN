@@ -1,47 +1,64 @@
-import { ChatRequest, ChatResponse, AvatarEmotion, CharacterAction } from '../types.js';
-import { buildSystemPrompt } from '../personality.js';
-import { getRelevantMemories } from './memoryRetriever.js';
+import {
+  ChatRequest,
+  ChatResponse,
+  StructuredAiOutput,
+  AvatarEmotion,
+  CharacterAction,
+  MasteryLevel
+} from '../types.js';
+import { buildRichConversationContext, PreparedContext } from './conversationManager.js';
+import { processStructuredResponse, cleanSpeechText } from './responseProcessor.js';
 
 export async function generateVihaanReply(request: ChatRequest): Promise<ChatResponse> {
-  const { message, history, mode, memories, memoryEnabled = true } = request;
   const apiKey = process.env.AI_API_KEY || '';
   const provider = (process.env.AI_PROVIDER || 'mock').toLowerCase();
+  const context = buildRichConversationContext(request);
 
-  // If Gemini API is configured
+  // 1. Google Gemini Provider
   if (provider === 'gemini' && apiKey) {
     try {
-      return await callGeminiAPI(request, apiKey);
+      const rawOutput = await callGeminiAPI(request, context, apiKey);
+      return processStructuredResponse(rawOutput, request, context);
     } catch (err) {
-      console.error('Gemini API error, falling back to smart engine:', err);
+      console.error('Gemini API error, falling back to intelligent brain:', err);
     }
   }
 
-  // If OpenAI API is configured
+  // 2. OpenAI Provider
   if (provider === 'openai' && apiKey) {
     try {
-      return await callOpenAIAPI(request, apiKey);
+      const rawOutput = await callOpenAIAPI(request, context, apiKey);
+      return processStructuredResponse(rawOutput, request, context);
     } catch (err) {
-      console.error('OpenAI API error, falling back to smart engine:', err);
+      console.error('OpenAI API error, falling back to intelligent brain:', err);
     }
   }
 
-  // Built-in intelligent conversational engine for Vihaan
-  return generateIntelligentFallbackReply(request);
+  // 3. Built-in intelligent companion brain (works fully offline)
+  const fallbackOutput = generateIntelligentFallbackOutput(request, context);
+  return processStructuredResponse(fallbackOutput, request, context);
 }
 
-// Call Google Gemini API directly
-async function callGeminiAPI(request: ChatRequest, apiKey: string): Promise<ChatResponse> {
-  const { message, history, mode, memories, memoryEnabled = true } = request;
-  const systemPrompt = buildSystemPrompt(mode, memories, message, memoryEnabled);
+// Gemini API integration
+async function callGeminiAPI(
+  request: ChatRequest,
+  context: PreparedContext,
+  apiKey: string
+): Promise<StructuredAiOutput> {
+  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const contents = [
     {
       role: 'user',
-      parts: [{ text: `${systemPrompt}\n\nUser says: ${message}` }]
+      parts: [
+        {
+          text: `${context.systemPrompt}\n\nUser (${request.userName || 'Kuhu'}) says: "${request.message}"\n\nGenerate your structured JSON response.`
+        }
+      ]
     }
   ];
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -50,263 +67,290 @@ async function callGeminiAPI(request: ChatRequest, apiKey: string): Promise<Chat
       generationConfig: {
         responseMimeType: 'application/json',
         temperature: 0.8,
-        maxOutputTokens: 300
+        maxOutputTokens: 600
       }
     })
   });
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`Gemini API failed: ${res.status} - ${errorText}`);
+    throw new Error(`Gemini API failed with status ${res.status}: ${errorText}`);
   }
 
   const data = (await res.json()) as any;
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const parsed = JSON.parse(rawText);
-
-  return {
-    reply: parsed.reply || "I'm right here with you, Kuhu. Speak your mind!",
-    emotion: validateEmotion(parsed.emotion),
-    action: validateAction(parsed.action)
-  };
+  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+  return JSON.parse(rawText);
 }
 
-// Call OpenAI Compatible API
-async function callOpenAIAPI(request: ChatRequest, apiKey: string): Promise<ChatResponse> {
-  const { message, history, mode, memories, memoryEnabled = true } = request;
-  const systemPrompt = buildSystemPrompt(mode, memories, message, memoryEnabled);
+// OpenAI API integration
+async function callOpenAIAPI(
+  request: ChatRequest,
+  context: PreparedContext,
+  apiKey: string
+): Promise<StructuredAiOutput> {
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const url = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions';
 
   const messages = [
-    { role: 'system', content: systemPrompt },
-    ...history.slice(-6).map((m) => ({
-      role: m.sender === 'user' ? 'user' : 'assistant',
+    { role: 'system', content: context.systemPrompt },
+    ...request.history.slice(-6).map((m) => ({
+      role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
       content: m.text
     })),
-    { role: 'user', content: message }
+    { role: 'user', content: request.message }
   ];
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model,
       messages,
       response_format: { type: 'json_object' },
       temperature: 0.8,
-      max_tokens: 250
+      max_tokens: 500
     })
   });
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`OpenAI API failed: ${res.status} - ${errorText}`);
+    throw new Error(`OpenAI API failed with status ${res.status}: ${errorText}`);
   }
 
   const data = (await res.json()) as any;
   const rawText = data?.choices?.[0]?.message?.content || '{}';
-  const parsed = JSON.parse(rawText);
+  return JSON.parse(rawText);
+}
+
+/**
+ * Built-in intelligent Rihaan offline conversational & pedagogical brain.
+ * Provides rich, context-aware, stateful interaction even without an external API key.
+ */
+export function generateIntelligentFallbackOutput(
+  request: ChatRequest,
+  context: PreparedContext
+): StructuredAiOutput {
+  const { message, mode, memories, userName = 'Kuhu' } = request;
+  const lower = message.toLowerCase().trim();
+  const words = lower.split(/\s+/).filter(Boolean);
+
+  // 1. Physical Room Action Commands
+  if (/\b(sit down|baith jao|go sit|chair)\b/i.test(lower)) {
+    return {
+      reply: `Haan baba, armchair par aakar baith gaya. Relax, I'm right here. Ab batao, what's on your mind?`,
+      speechText: `Haan baba, armchair par aakar baith gaya. Relax, I'm right here. Ab batao, what's on your mind?`,
+      emotion: 'happy',
+      action: 'sit',
+      intent: 'casual_chat'
+    };
+  }
+
+  if (/\b(come here|idhar aao|come closer|stand near)\b/i.test(lower)) {
+    return {
+      reply: `Coming right over! Haan ${userName}, I'm standing right in front of you. Tell me what's going on.`,
+      speechText: `Coming right over! Haan ${userName}, I'm standing right in front of you. Tell me what's going on.`,
+      emotion: 'curious',
+      action: 'walk_near',
+      intent: 'casual_chat'
+    };
+  }
+
+  if (/\b(stand up|khade ho jao)\b/i.test(lower)) {
+    return {
+      reply: `Alright, standing up and stretching. Ready for whatever we're tackling next. What's the plan?`,
+      speechText: `Alright, standing up and stretching. Ready for whatever we're tackling next. What's the plan?`,
+      emotion: 'playful',
+      action: 'stand',
+      intent: 'casual_chat'
+    };
+  }
+
+  // 2. Explicit Memory Commands
+  if (context.explicitMemoryCheck.isExplicitRemember && context.explicitMemoryCheck.targetText) {
+    const fact = context.explicitMemoryCheck.targetText;
+    return {
+      reply: `Got it locked into memory: "${fact}". I won't forget that.`,
+      speechText: `Got it locked into memory. I won't forget that.`,
+      emotion: 'serious',
+      action: 'none',
+      intent: 'memory_request',
+      shouldRemember: true,
+      memoryCandidates: [
+        {
+          content: fact,
+          category: context.explicitMemoryCheck.category || 'identity',
+          importance: 5,
+          tags: ['explicit', ...words.slice(0, 3)]
+        }
+      ]
+    };
+  }
+
+  if (context.explicitMemoryCheck.isExplicitForget && context.explicitMemoryCheck.targetText) {
+    const target = context.explicitMemoryCheck.targetText;
+    return {
+      reply: `Done. Removed any active memories about "${target}" from my records. Clean slate on that.`,
+      speechText: `Done. Removed any active memories about ${target}.`,
+      emotion: 'thinking',
+      action: 'none',
+      intent: 'memory_request',
+      forgetRequests: [target]
+    };
+  }
+
+  // 3. Short-Answer / Sulking / Procrastination Detection
+  const shortResponses = ['yeah', 'yes', 'yep', 'hmm', 'kuch nahi', 'nothing', 'theek hai', 'fine', 'nahi', 'ok', 'okay'];
+  if (words.length <= 2 && shortResponses.some((w) => lower === w || lower.startsWith(w))) {
+    return {
+      reply: `Hmm... bas '${message.trim()}'? Aise kaise chalega madam? You only pull out the one-word replies when you're drained or overthinking. Spill it.`,
+      speechText: `Hmm... bas '${message.trim()}'? Aise kaise chalega madam? You only pull out the one-word replies when you're drained or overthinking. Spill it.`,
+      emotion: 'teasing',
+      action: 'none',
+      intent: 'casual_chat'
+    };
+  }
+
+  // 4. Procrastination & Reels
+  if (/\b(reels?|scrolling|instagram|shorts|tiktok)\b/i.test(lower)) {
+    return {
+      reply: `Three hours scrolling reels? Seriously ${userName}? 😭 Put the phone face-down right now. We're doing 15 solid minutes of focus, and then you can take a breather. Deal?`,
+      speechText: `Seriously ${userName}? Put the phone face-down right now. Let's do 15 solid minutes of focus first. Deal?`,
+      emotion: 'playful',
+      action: 'walk_near',
+      intent: 'casual_chat'
+    };
+  }
+
+  if (/\b(study tomorrow|kal padh|kal se|kal karungi|do it tomorrow|postpone)\b/i.test(lower)) {
+    return {
+      reply: `Kal kabhi nahi aata ${userName}! You said 'kal se' yesterday too. Look, don't sit for three hours. Let's just tackle one small concept right now. Deal?`,
+      speechText: `Kal kabhi nahi aata ${userName}! Let's just tackle one small concept right now. Deal?`,
+      emotion: 'teasing',
+      action: 'walk_near',
+      intent: 'casual_chat'
+    };
+  }
+
+  // 5. Teaching: Recursion (User brief example scenario)
+  const isRecursionTopic =
+    /\b(recursion|recursive)\b/i.test(lower) ||
+    request.learningState?.activeConcept === 'Recursion' ||
+    request.history.some((h) => /\b(recursion|recursive|dolls?|base case)\b/i.test(h.text));
+
+  if (isRecursionTopic) {
+    if (/\b(don't understand|confused|hate|explain|teach|what is|still don't get)\b/i.test(lower)) {
+      return {
+        reply: `Okay, let's completely forget the dry textbook definition for a second. Think of it like looking into two facing mirrors, or opening nested Russian dolls until you reach the tiny solid one at the center.\n\nBefore I show you any code: what do you think would happen if a function kept calling itself forever without that tiny solid doll to stop it?`,
+        speechText: `Okay, let's completely forget the dry textbook definition for a second. Think of it like Russian dolls that open up until you hit the solid one in the center. Before we write code, what do you think would happen if a function kept calling itself forever without a stopping point?`,
+        emotion: 'curious',
+        action: 'none',
+        intent: 'teaching',
+        learning: {
+          active: true,
+          topic: 'Python',
+          concept: 'Recursion',
+          status: 'struggling',
+          misconception: 'Lacks intuition on the base-case termination condition'
+        },
+        followUp: 'What happens without a base case?'
+      };
+    }
+
+    if (/\b(loop|infinite|crash|stack|overflow|stop|explode|forever)\b/i.test(lower)) {
+      return {
+        reply: `Spot on! It runs out of memory and crashes — that's literally what a Stack Overflow is. That stopping condition is called the **base case**. Once you define when to stop, the rest is just shrinking the problem each step. Ready to look at a 3-line example now?`,
+        speechText: `Spot on! It crashes the stack. That stopping point is your base case. Once you know when to stop, the rest is just shrinking the problem. Ready for a quick three-line example?`,
+        emotion: 'happy',
+        action: 'none',
+        intent: 'teaching',
+        learning: {
+          active: true,
+          topic: 'Python',
+          concept: 'Recursion',
+          status: 'understood'
+        }
+      };
+    }
+  }
+
+  // 6. Teaching: Classes & OOP (User brief example scenario)
+  const isClassesTopic =
+    /\b(classes|oop|object oriented|objects)\b/i.test(lower) ||
+    request.learningState?.activeConcept === 'Classes' ||
+    request.history.some((h) => /\b(classes|objects|blueprint|cookie cutter)\b/i.test(h.text));
+
+  if (isClassesTopic) {
+    if (/\b(hate|confused|don't understand|struggle|explain|teach)\b/i.test(lower)) {
+      return {
+        reply: `Fair enough 😂. Classes feel overly ceremonial at first. But forget "blueprints" for a minute. Think of a class like a custom cookie cutter, and the objects as the actual cookies that come out with their own sprinkles.\n\nSince you're comfortable with functions and variables, a class is just a bundle that packages variables and the functions that use them together so they don't get lost. Makes sense so far?`,
+        speechText: `Fair enough! Classes feel ceremonial at first. But think of a class like a cookie cutter, and objects as the actual cookies. It's just a way to bundle variables and the functions that touch them together. Makes sense so far?`,
+        emotion: 'playful',
+        action: 'none',
+        intent: 'teaching',
+        learning: {
+          active: true,
+          topic: 'Python',
+          concept: 'Classes',
+          status: 'practicing'
+        }
+      };
+    }
+  }
+
+  // 7. Coding & Debugging (Don't over-assist, ask for error / give targeted hint)
+  if (/\b(code isn't working|bug|error|getting an error|syntax error|broken)\b/i.test(lower)) {
+    return {
+      reply: `Send me the exact error message and the snippet first. I don't want to guess in the dark and waste your time. What line is it tripping on?`,
+      speechText: `Send me the exact error message and snippet first. What line is it tripping on?`,
+      emotion: 'curious',
+      action: 'none',
+      intent: 'debugging'
+    };
+  }
+
+  // 8. Mode-specific flair
+  if (mode === 'roast') {
+    return {
+      reply: `I knew you'd say that 😂. You have a PhD in making excuses look like strategic contemplation. What's the real blocker here, madam?`,
+      speechText: `I knew you'd say that. You have a PhD in making excuses look like strategic contemplation. What's the real blocker here?`,
+      emotion: 'teasing',
+      action: 'none',
+      intent: 'casual_chat'
+    };
+  }
+
+  if (mode === 'alter_ego') {
+    return {
+      reply: `Step back and breathe for a second. You already know what needs to be done here; you're just second-guessing yourself because of the noise. Let's isolate the single next logical move.`,
+      speechText: `Step back and breathe for a second. You already know what needs to be done; you're just second-guessing yourself. Let's isolate the single next move.`,
+      emotion: 'serious',
+      action: 'none',
+      intent: 'reflection'
+    };
+  }
+
+  if (mode === 'night_2am') {
+    return {
+      reply: `It's late, ${userName}. The world is quiet. If this thought is keeping you awake, let's unpack it gently. No rush, no pressure.`,
+      speechText: `It's late, ${userName}. If this thought is keeping you awake, let's unpack it gently. No rush, no pressure.`,
+      emotion: 'curious',
+      action: 'sit',
+      intent: 'casual_chat'
+    };
+  }
+
+  // 9. Natural contextual fallback
+  const anchorMemory = context.relevantMemories[0]?.content;
+  const memoryHint = anchorMemory ? ` (keeping your work on ${anchorMemory} in mind)` : '';
 
   return {
-    reply: parsed.reply || "I'm right here with you, Kuhu. Speak your mind!",
-    emotion: validateEmotion(parsed.emotion),
-    action: validateAction(parsed.action)
+    reply: `I'm listening, ${userName}. Tell me more about that${memoryHint} — let's break it down together.`,
+    speechText: `I'm listening, ${userName}. Tell me more about that, let's break it down together.`,
+    emotion: 'happy',
+    action: 'none',
+    intent: 'casual_chat'
   };
-}
-
-// Built-in intelligent Vihaan conversational response engine
-export function generateIntelligentFallbackReply(request: ChatRequest): ChatResponse {
-  const { message, mode, memories, memoryEnabled = true } = request;
-  const lower = message.toLowerCase().trim();
-  const wordCount = lower.split(/\s+/).filter(Boolean).length;
-
-  let reply = '';
-  let emotion: AvatarEmotion = 'happy';
-  let action: CharacterAction = 'none';
-
-  // Get relevant memories if enabled
-  const relevantMemories = memoryEnabled ? getRelevantMemories(memories, message) : {};
-  const studyTopic = (memoryEnabled && (memories.goals?.[0] || memories.projects?.[0] || memories.study_topics?.[0])) || 'Python';
-
-  // 1. Direct Physical Character Command Triggers
-  if (lower.includes('sit down') || lower.includes('baith jao') || lower.includes('go sit') || lower.includes('return to chair') || lower.includes('kursi par')) {
-    reply = "Haan baba, chair par aakar baith raha hoon. Relax, I'm comfortable here. Ab batao, kya chal raha hai?";
-    emotion = 'happy';
-    action = 'sit';
-    return { reply, emotion, action };
-  }
-
-  if (lower.includes('come here') || lower.includes('idhar aao') || lower.includes('come closer') || lower.includes('paas aao')) {
-    reply = "Coming right there! Haan Kuhu, I'm right in front of you. Tell me, what's on your mind?";
-    emotion = 'happy';
-    action = 'walk_near';
-    return { reply, emotion, action };
-  }
-
-  if (lower.includes('stand up') || lower.includes('khade ho jao') || lower.includes('get up')) {
-    reply = "Alright, standing up! Stretching a bit. Tell me, what are we planning now?";
-    emotion = 'playful';
-    action = 'stand';
-    return { reply, emotion, action };
-  }
-
-  // 2. Multi-turn history awareness
-  const lastVihaanMsg = [...(request.history || [])].reverse().find((m) => m.sender === 'vihaan')?.text.toLowerCase() || '';
-
-  if ((lastVihaanMsg.includes('aa gayi') || lastVihaanMsg.includes('waiting') || lastVihaanMsg.includes('room')) && (lower.includes('haan') || lower.includes('haaan') || lower === 'yes' || lower === 'yeah')) {
-    reply = "Accha, batao aaj kya hua? Any tea to spill or just a regular day?";
-    emotion = 'happy';
-    return { reply, emotion, action };
-  }
-
-  if (lastVihaanMsg.includes('kya boring tha') && (lower.includes('lecture') || lower.includes('prof') || lower.includes('class') || lower.includes('subject'))) {
-    reply = "Classic. Aur tu lecture mein actually attentive thi? Ya bas backbench pe baith ke window dekh rahi thi?";
-    emotion = 'playful';
-    return { reply, emotion, action };
-  }
-
-  if (lastVihaanMsg.includes('attentive') && (lower.includes('bilkul nahi') || lower.includes('nahi') || lower.includes('no') || lower.includes('never') || lower.includes('obviously not'))) {
-    reply = "I KNEW IT! Literally expected nothing less from you 😭 Chalo, now that the torture is over, what are we doing?";
-    emotion = 'playful';
-    return { reply, emotion, action };
-  }
-
-  // 3. SCENARIO TEST 1: Short Answers ("Yeah", "Nothing", "Hmm", etc.)
-  // Vihaan notices and calls her out affectionately
-  const shortAffirmations = ['yeah', 'yes', 'yep', 'hmm', 'kuch nahi', 'nothing', 'theek hai', 'fine', 'nahi', 'kaha', 'ok', 'okay'];
-  if (wordCount <= 2 && shortAffirmations.some((w) => lower === w || lower.startsWith(w))) {
-    reply = "Hmm... bas 'yeah'? Aise kaise chalega madam? Kuch toh hua hai, bata mujhe. You only give one-word answers when you're either exhausted or sulking.";
-    emotion = 'thinking';
-    return { reply, emotion, action };
-  }
-
-  // 4. SCENARIO TEST 9: Roast Mode & Reel Scrolling
-  if (mode === 'roast' || lower.includes('reels for') || lower.includes('scrolling reels') || lower.includes('instagram for')) {
-    if (lower.includes('scrolling') || lower.includes('reels') || lower.includes('phone')) {
-      reply = "Three hours? Seriously Kuhu? 😭 You could have mastered an entire topic in that time, but instead your algorithm now knows your exact dopamine weaknesses. Put the phone face-down right now before I start judging you harder.";
-      emotion = 'playful';
-      return { reply, emotion, action };
-    }
-  }
-
-  // 5. SCENARIO TEST 2: Disagreement / Procrastination ("I will study tomorrow instead" / "kal padhungi" / "tomorrow")
-  if (lower.includes('study tomorrow') || lower.includes('kal padh') || lower.includes('kal karungi') || lower.includes('do it tomorrow') || lower.includes('will do it tomorrow')) {
-    reply = "Kal kabhi nahi aata Kuhu! You said that yesterday too 😭 Look, don't sit for four hours. Let's just do twenty solid minutes right now, and then you're free. Deal?";
-    emotion = 'playful';
-    action = 'walk_near';
-    return { reply, emotion, action };
-  }
-
-  // 6. SCENARIO TEST 3: Memory recall ("I don't know what to study" / "kya padhu")
-  if (lower.includes("don't know what to study") || lower.includes('what should i study') || lower.includes('kya padhu') || lower.includes('kya study karu')) {
-    if (memoryEnabled) {
-      reply = `You're asking me? What about ${studyTopic} that you planned to finish? Open that chapter right now, let's knock out one topic together instead of overthinking it.`;
-      emotion = 'playful';
-      action = 'walk_near';
-      return { reply, emotion, action };
-    } else {
-      reply = "Since memory is off, I won't pretend to remember your syllabus! Pick whatever is most urgent or terrifying, and let's spend 20 minutes on it right now.";
-      emotion = 'thinking';
-      return { reply, emotion, action };
-    }
-  }
-
-  // 7. General refusal to study ("I don't want to study" / "mann nahi")
-  if (lower.includes('mann nahi') || lower.includes('padhai nahi') || lower.includes('nahi padhna') || lower.includes("don't want to study") || lower.includes('not in the mood to study')) {
-    if (memoryEnabled) {
-      reply = `You're still avoiding ${studyTopic}? 😭 You told me earlier that you'd finish that topic! Look, I'm not telling you to sit for four exhausting hours. Let's just do one single topic for twenty solid minutes, and then you can procrastinate with a clear conscience. Deal?`;
-    } else {
-      reply = "I get it, nobody is born excited to study. But twenty focused minutes right now beats feeling guilty the entire evening. Grab your notes and let's do just one quick sprint.";
-    }
-    emotion = 'playful';
-    action = 'walk_near';
-    return { reply, emotion, action };
-  }
-
-  // 8. SCENARIO TEST 7: Emotional Tone Match - Bad Day / Everything Went Wrong
-  if (lower.includes('worst day') || lower.includes('everything went wrong') || lower.includes('crying') || (lower.includes('bad day') && lower.includes('exhausted'))) {
-    reply = "Arre Kuhu... aaram se baitho pehle. Deep breath lo. Paani piya? Tell me what happened, you don't have to put on a brave face around me.";
-    emotion = 'sad';
-    return { reply, emotion, action };
-  }
-
-  // 9. SCENARIO TEST 8: 2 AM Mode
-  if (mode === 'night_2am') {
-    reply = "The whole city is quiet right now, Kuhu. Don't stress yourself over things you can't solve at two in the morning. Just breathe and tell me what's lingering on your mind.";
-    emotion = 'idle';
-    return { reply, emotion, action };
-  }
-
-  // 10. Boredom / College Day Test
-  if ((lower.includes('college') || lower.includes('class')) && (lower.includes('boring') || lower.includes('kharab') || lower.includes('bekaar') || lower.includes('dull'))) {
-    reply = "Again? 😭 Bata, professor ne aaj kaunsa naya snooze-fest lecture diya? Kya boring tha aaj?";
-    emotion = 'playful';
-    return { reply, emotion, action };
-  }
-
-  if (lower.includes('bored') || lower.includes('boring') || lower.includes('bore ho')) {
-    reply = "Boring lag raha hai? In a world where you have a thousand unread notifications, three half-started playlists, and pending tasks? 😭 Don't just stare at the ceiling. Tell me, if you could teleport anywhere right this second without anyone asking questions, where are we landing?";
-    emotion = 'playful';
-    action = 'walk_near';
-    return { reply, emotion, action };
-  }
-
-  // 11. Random thought / Something random
-  if (lower.includes('something random') || lower.includes('random thought') || lower.includes('kuch random')) {
-    reply = "Okay, random thought I had earlier: why is it that whenever we decide to 'get our life together', it always has to start on a Monday or 'kal se'? Like, Thursday afternoon ko life improve karna illegal hai kya? 😭 What do you think?";
-    emotion = 'playful';
-    return { reply, emotion, action };
-  }
-
-  // 12. Good night / sleeping
-  if (lower.includes('good night') || lower.includes('goodnight') || lower.includes('sone ja rahi') || lower.includes('going to sleep') || lower.includes('bye')) {
-    reply = "Good night Kuhu. Rakh do ab phone side mein, don't start scrolling reels again under your blanket. Sleep well, we'll pick up this drama tomorrow. 🌙";
-    emotion = 'happy';
-    action = 'sit';
-    return { reply, emotion, action };
-  }
-
-  // 13. Tiredness / Feeling down
-  if (lower.includes('tired') || lower.includes('thak gayi') || lower.includes('exhausted') || lower.includes('bad day') || lower.includes('sad')) {
-    reply = "Arre Kuhu... aaram se baitho pehle. Paani piya? Tell me what drained your energy today. You don't have to pretend to be cheerful around me.";
-    emotion = 'sad';
-    return { reply, emotion, action };
-  }
-
-  // 14. Greetings
-  if (/\b(hello|hi|hey|namaste)\b/i.test(lower) || lower === 'vihaan') {
-    reply = "Arre Kuhu! Finally aa gayi? I was wondering when you'd show up. Batao, aaj kya scene hai? Kuch naya gossip ya wahi purana drama?";
-    emotion = 'happy';
-    return { reply, emotion, action };
-  }
-
-  // 15. Mode specific fallbacks
-  if (mode === 'roast') {
-    reply = "Look at you trying to distract me. You've been negotiating with your textbook for the last two hours, Kuhu. 😭 Open that topic before I start grading your excuses.";
-    emotion = 'playful';
-  } else if (mode === 'study') {
-    reply = `I hear you, but remember where you want to be. Give me twenty focused minutes on ${studyTopic}, and then take a break. Sound like a plan?`;
-    emotion = 'happy';
-  } else if (mode === 'alter_ego') {
-    reply = "I'm your clearer mind talking, Kuhu. Let's strip away the anxiety for a second. If you weren't scared of failing, what decision would you make right now?";
-    emotion = 'thinking';
-  } else {
-    // Best Friend (Default)
-    reply = "I'm right here with you, Kuhu. Speak your mind—whether it's serious, random, or completely unhinged, you know I'm all ears!";
-    emotion = 'happy';
-  }
-
-  return { reply, emotion, action };
-}
-
-function validateEmotion(emotion: any): AvatarEmotion {
-  const valid: AvatarEmotion[] = ['idle', 'listening', 'thinking', 'speaking', 'happy', 'sad', 'surprised', 'playful'];
-  return valid.includes(emotion) ? emotion : 'happy';
-}
-
-function validateAction(action: any): CharacterAction {
-  const valid: CharacterAction[] = ['sit', 'stand', 'walk_near', 'walk_chair', 'none'];
-  return valid.includes(action) ? action : 'none';
 }
