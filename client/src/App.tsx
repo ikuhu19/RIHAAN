@@ -332,7 +332,7 @@ export const App: React.FC = () => {
 
     try {
       console.log('[AI] sending user message to Rihaan brain:', userText);
-      const history = [...currentSession.messages, userMsg];
+      const history = currentSession.messages;
 
       // 3. Request reply with rich context (memories, learning state, open loops)
       const res = await sendChatMessage(

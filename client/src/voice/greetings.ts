@@ -24,7 +24,7 @@ export function generateVihaanGreeting(userName = 'Kuhu'): GreetingResult {
         action: 'stand'
       },
       {
-        text: `Morning, baby. Kya scene hai today? Ready for the day or starting with procrastination?`,
+        text: `Morning, ${userName}. Kya scene hai today? Ready for the day or starting with procrastination?`,
         emotion: 'happy',
         posture: 'sitting',
         action: 'stand'
