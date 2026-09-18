@@ -1,0 +1,15 @@
+{
+  "name": "vihaan-ai-companion",
+  "version": "1.0.0",
+  "description": "Interactive AI companion application named VIHAAN",
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,magenta\" \"npm run dev:server\" \"npm run dev:client\"",
+    "start": "npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build": "cd client && npm run build && cd ../server && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
